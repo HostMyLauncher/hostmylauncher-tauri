@@ -1,4 +1,6 @@
-//! Typed transport contract and deterministic generation.
+//! Session-scoped provider bridge, independent of Tauri runtime.
+mod bridge;
+mod commands;
 pub mod contract;
 pub mod registry;
-mod commands;
+pub use bridge::{Bridge, EventSink, InstanceRegistration};
