@@ -1,2 +1,4 @@
-//! Optional Tauri bridge scaffold.
-//! Launchers own orchestration, Minecraft, and product behavior.
+//! Typed transport contract and deterministic generation.
+pub mod contract;
+pub mod registry;
+mod commands;

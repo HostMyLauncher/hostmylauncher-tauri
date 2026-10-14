@@ -3,3 +3,33 @@ name = "hostmylauncher-tauri"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+# Tauri's consuming build discovers hostmylauncher permissions through this key.
+links = "hostmylauncher"
+
+[features]
+default = []
+# Host applications enable plugin integration; no bundled WebView runtime.
+plugin = ["dep:tauri"]
+# Opt-in mock IPC tests, without selecting the Wry runtime.
+plugin-tests = ["plugin", "tauri/test"]
+
+[dependencies]
+hostmylauncher = { path = "../../../hostmylauncher-rs" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = { version = "10", features = ["serde-compat"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+futures-util = "0.3"
+tauri = { version = "2", default-features = false, optional = true }
+
+[build-dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+
+[[bin]]
+name = "generate-contract"
+path = "src/bin/generate-contract.rs"
