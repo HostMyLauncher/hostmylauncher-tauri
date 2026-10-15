@@ -1,0 +1,20 @@
+{
+  "productName": "Bridge Capability Host",
+  "version": "0.1.0",
+  "identifier": "com.hostmylauncher.capabilityfixture",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": [
+        "bridge-local"
+      ]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": []
+  }
+}

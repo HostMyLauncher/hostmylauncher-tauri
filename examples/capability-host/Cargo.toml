@@ -1,0 +1,14 @@
+[package]
+name = "bridge-capability-host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+hostmylauncher-tauri = { path = "../../crates/hostmylauncher-tauri", features = ["plugin"] }
+tauri = { version = "2", default-features = false, features = ["test"] }
+
+[build-dependencies]
+tauri-build = "2"

@@ -1,0 +1,10 @@
+{
+  "identifier": "bridge-local",
+  "description": "Local-only build fixture for discovering the bridge default permission.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "hostmylauncher:default"
+  ]
+}
