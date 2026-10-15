@@ -1,2 +1,5 @@
-// Client implementation follows the IPC contract.
-export {};
+export { createClient } from './client.ts';
+export type { Client, OperationListener, SubscriptionErrorHandler } from './client.ts';
+export { createTauriTransport } from './transport.ts';
+export type { Cleanup, Transport, TauriAdapterDependencies } from './transport.ts';
+export * from './generated/contract.ts';

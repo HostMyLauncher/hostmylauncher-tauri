@@ -1,5 +1,10 @@
 {
   "name": "hostmylauncher-tauri-workspace",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @hostmylauncher/tauri build",
+    "typecheck": "pnpm --filter @hostmylauncher/tauri typecheck",
+    "test": "pnpm --filter @hostmylauncher/tauri test"
+  }
 }
