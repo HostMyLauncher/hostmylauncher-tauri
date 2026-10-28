@@ -16,26 +16,46 @@ use wiremock::{
 
 type Events = Arc<Mutex<Vec<OperationSnapshot>>>;
 fn registration(id: &str, root: PathBuf, manifest: PathBuf) -> InstanceRegistration {
+    registration_for("catalog", id, root, manifest)
+}
+fn registration_for(
+    launcher: &str,
+    id: &str,
+    root: PathBuf,
+    manifest: PathBuf,
+) -> InstanceRegistration {
     InstanceRegistration {
         instance_id: id.into(),
-        launcher_id: "catalog".into(),
+        launcher_id: launcher.into(),
         destination: root,
         manifest_path: manifest,
     }
 }
 fn bridge(server: &MockServer, registrations: Vec<InstanceRegistration>, events: Events) -> Bridge {
+    bridge_with_catalog(server, vec!["catalog".into()], registrations, events)
+}
+fn bridge_with_catalog(
+    server: &MockServer,
+    catalog: Vec<String>,
+    registrations: Vec<InstanceRegistration>,
+    events: Events,
+) -> Bridge {
     Bridge::new(
         Client::with_base_url(&server.uri())
             .unwrap()
             .with_token("PRIVATE_BEARER"),
-        vec!["catalog".into()],
+        catalog,
         registrations,
         Arc::new(move |snapshot| events.lock().unwrap().push(snapshot)),
     )
     .unwrap()
 }
 fn request(id: &str, kind: OperationKind) -> StartOperationRequest {
+    request_for("catalog", id, kind)
+}
+fn request_for(launcher: &str, id: &str, kind: OperationKind) -> StartOperationRequest {
     StartOperationRequest {
+        launcher_id: launcher.into(),
         instance_id: id.into(),
         kind,
         code: Some("PRIVATE_CODE".into()),
@@ -102,6 +122,120 @@ fn safe(value: &impl serde::Serialize) {
             "unsafe transport field: {forbidden}"
         );
     }
+}
+
+#[tokio::test]
+async fn same_instance_id_is_scoped_by_provider_and_snapshots_retain_both() {
+    let server = MockServer::start().await;
+    for provider_id in ["alpha", "beta"] {
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/launchers/{provider_id}/instances/shared/files"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": []})))
+            .mount(&server)
+            .await;
+    }
+    let temp = TempDir::new().unwrap();
+    let events = Events::default();
+    let bridge = bridge_with_catalog(
+        &server,
+        vec!["alpha".into(), "beta".into()],
+        vec![
+            registration_for(
+                "alpha",
+                "shared",
+                temp.path().join("alpha"),
+                temp.path().join("alpha.json"),
+            ),
+            registration_for(
+                "beta",
+                "shared",
+                temp.path().join("beta"),
+                temp.path().join("beta.json"),
+            ),
+        ],
+        events.clone(),
+    );
+
+    let first = bridge
+        .start_operation(request_for("alpha", "shared", OperationKind::Verify))
+        .await
+        .unwrap();
+    let second = bridge
+        .start_operation(request_for("beta", "shared", OperationKind::Verify))
+        .await
+        .unwrap();
+    assert_ne!(first.operation_id, second.operation_id);
+    assert_eq!(
+        (first.launcher_id.as_str(), first.instance_id.as_str()),
+        ("alpha", "shared")
+    );
+    assert_eq!(
+        (second.launcher_id.as_str(), second.instance_id.as_str()),
+        ("beta", "shared")
+    );
+    assert_eq!(terminal(&bridge, &first).await.launcher_id, "alpha");
+    assert_eq!(terminal(&bridge, &second).await.launcher_id, "beta");
+    let emitted = events.lock().unwrap();
+    assert!(emitted
+        .iter()
+        .any(|event| event.operation_id == first.operation_id && event.launcher_id == "alpha"));
+    assert!(emitted
+        .iter()
+        .any(|event| event.operation_id == second.operation_id && event.launcher_id == "beta"));
+}
+
+#[tokio::test]
+async fn canonical_destination_conflict_is_enforced_across_providers() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/launchers/alpha/instances/shared/files"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"results": []}))
+                .set_delay(Duration::from_millis(250)),
+        )
+        .mount(&server)
+        .await;
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().join("shared-install");
+    let events = Events::default();
+    let bridge = bridge_with_catalog(
+        &server,
+        vec!["alpha".into(), "beta".into()],
+        vec![
+            registration_for(
+                "alpha",
+                "shared",
+                root.clone(),
+                temp.path().join("alpha.json"),
+            ),
+            registration_for(
+                "beta",
+                "shared",
+                root.clone(),
+                temp.path().join("beta.json"),
+            ),
+        ],
+        events.clone(),
+    );
+    let accepted = bridge
+        .start_operation(request_for("alpha", "shared", OperationKind::Sync))
+        .await
+        .unwrap();
+    let before = server.received_requests().await.unwrap().len();
+    let rejected = bridge
+        .start_operation(request_for("beta", "shared", OperationKind::Sync))
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.code, ErrorCode::OperationConflict);
+    assert!(rejected.operation_id.is_none());
+    assert_eq!(server.received_requests().await.unwrap().len(), before);
+    assert_eq!(
+        terminal(&bridge, &accepted).await.status,
+        OperationStatus::Succeeded
+    );
 }
 
 #[tokio::test]
@@ -680,6 +814,7 @@ async fn task_callback_panic_becomes_failure_and_does_not_strand_guard() {
 fn options_are_explicit_nulls_and_results_are_discriminated() {
     let value = serde_json::to_value(OperationSnapshot {
         operation_id: "op".into(),
+        launcher_id: "catalog".into(),
         instance_id: "one".into(),
         kind: OperationKind::Verify,
         status: OperationStatus::Queued,
@@ -691,7 +826,7 @@ fn options_are_explicit_nulls_and_results_are_discriminated() {
     .unwrap();
     assert_eq!(
         value,
-        json!({"operationId":"op","instanceId":"one","kind":"verify",
+        json!({"operationId":"op","launcherId":"catalog","instanceId":"one","kind":"verify",
         "status":"queued","sequence":0,"progress":null,"result":null,"error":null})
     );
     let result: Value = serde_json::to_value(OperationResult::Verify {

@@ -39,6 +39,7 @@ async function prove(): Promise<void> {
       instanceId: 'proof-instance',
     });
     const accepted = await client.startOperation({
+      launcherId: 'proof',
       instanceId: 'proof-instance',
       kind: 'sync',
       code: null,

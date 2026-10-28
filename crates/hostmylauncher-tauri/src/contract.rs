@@ -41,6 +41,7 @@ pub struct GetInstanceFilesRequest {
 #[derive(Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct StartOperationRequest {
+    pub launcher_id: String,
     pub instance_id: String,
     pub kind: OperationKind,
     pub code: Option<String>,
@@ -138,7 +139,7 @@ dto!(BridgeError {
     context: Option<ErrorContext>
 });
 dto!(OperationSnapshot {
-    operation_id: String, instance_id: String, kind: OperationKind, status: OperationStatus,
+    operation_id: String, launcher_id: String, instance_id: String, kind: OperationKind, status: OperationStatus,
     sequence: u64 => "number", progress: Option<OperationProgress>,
     result: Option<OperationResult>, error: Option<BridgeError>
 });

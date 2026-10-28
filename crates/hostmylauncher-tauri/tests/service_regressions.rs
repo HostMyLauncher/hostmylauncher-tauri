@@ -35,6 +35,7 @@ async fn done(service: &Bridge, id: &str) -> OperationSnapshot {
 }
 fn start(kind: OperationKind) -> StartOperationRequest {
     StartOperationRequest {
+        launcher_id: "catalog".into(),
         instance_id: "one".into(),
         kind,
         code: None,
@@ -244,11 +245,13 @@ async fn invalid_request_fields_do_not_consume_operation_ids_or_make_requests() 
     .unwrap();
     for request in [
         StartOperationRequest {
+            launcher_id: "catalog".into(),
             instance_id: "../one".into(),
             kind: OperationKind::Sync,
             code: None,
         },
         StartOperationRequest {
+            launcher_id: "catalog".into(),
             instance_id: "one".into(),
             kind: OperationKind::Verify,
             code: Some(" ".into()),

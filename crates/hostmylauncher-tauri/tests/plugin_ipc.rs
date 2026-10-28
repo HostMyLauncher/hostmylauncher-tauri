@@ -87,7 +87,7 @@ async fn all_six_generated_commands_reach_real_tauri_bindings() {
         ),
         (
             "startOperation",
-            json!({"instanceId":"unknown","kind":"sync","code":null}),
+            json!({"launcherId":"catalog","instanceId":"unknown","kind":"sync","code":null}),
             ErrorCode::NotFound,
         ),
         (
@@ -162,7 +162,7 @@ async fn command_acceptance_status_and_real_emit_use_the_generated_contract() {
         invoke(
             &window,
             start,
-            json!({"instanceId":"one","kind":"sync","code":null}),
+            json!({"launcherId":"catalog","instanceId":"one","kind":"sync","code":null}),
         )
         .unwrap(),
     )

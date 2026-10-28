@@ -4,7 +4,7 @@ import { createClient } from '../src/client.ts';
 import { COMMANDS, OPERATION_EVENT } from '../src/generated/contract.ts';
 
 const snapshot = (operationId = 'a', sequence = 0, status = 'queued') => ({
-  operationId, instanceId: 'instance', kind: 'sync', status, sequence,
+  operationId, launcherId: 'launcher', instanceId: 'instance', kind: 'sync', status, sequence,
   progress: null, result: null, error: null,
 });
 const deferred = () => {
@@ -47,14 +47,14 @@ test('every command wraps its exact request; optional inputs stay explicit null'
   await f.client.getInstance({ launcherId: 'launcher', instanceId: 'instance' });
   await f.client.resolveByCode({ launcherIds: ['launcher'], code: 'input-only' });
   await f.client.getInstanceFiles({ launcherId: 'launcher', instanceId: 'instance', code: null });
-  const accepted = await f.client.startOperation({ instanceId: 'instance', kind: 'repair', code: null });
+  const accepted = await f.client.startOperation({ launcherId: 'launcher', instanceId: 'instance', kind: 'repair', code: null });
   await f.client.getOperation({ operationId: 'a' });
   assert.deepEqual(f.calls, [
     [COMMANDS.listInstances, { request: { launcherId: 'launcher', limit: null, offset: 0 } }],
     [COMMANDS.getInstance, { request: { launcherId: 'launcher', instanceId: 'instance' } }],
     [COMMANDS.resolveByCode, { request: { launcherIds: ['launcher'], code: 'input-only' } }],
     [COMMANDS.getInstanceFiles, { request: { launcherId: 'launcher', instanceId: 'instance', code: null } }],
-    [COMMANDS.startOperation, { request: { instanceId: 'instance', kind: 'repair', code: null } }],
+    [COMMANDS.startOperation, { request: { launcherId: 'launcher', instanceId: 'instance', kind: 'repair', code: null } }],
     [COMMANDS.getOperation, { request: { operationId: 'a' } }],
   ]);
   assert.equal(accepted.status, 'queued');
@@ -68,7 +68,7 @@ test('queries return projections and preserve structured rejection without inven
   assert.equal(await f.client.listInstances({ launcherId: 'launcher', limit: null, offset: null }), result);
   const error = { code: 'operation_conflict', operationId: null, stage: null, context: null };
   f.transport.invoke = async () => { throw error; };
-  await assert.rejects(f.client.startOperation({ instanceId: 'instance', kind: 'verify', code: null }), value => value === error);
+  await assert.rejects(f.client.startOperation({ launcherId: 'launcher', instanceId: 'instance', kind: 'verify', code: null }), value => value === error);
 });
 
 test('subscribe deduplicates per operation, preserves payloads and never revives terminal state', async () => {

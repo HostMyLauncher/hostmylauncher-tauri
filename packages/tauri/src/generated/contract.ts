@@ -3,7 +3,7 @@ export type ListInstancesRequest = { launcherId: string, limit: number | null, o
 export type GetInstanceRequest = { launcherId: string, instanceId: string, };
 export type ResolveByCodeRequest = { launcherIds: Array<string>, code: string, };
 export type GetInstanceFilesRequest = { launcherId: string, instanceId: string, code: string | null, };
-export type StartOperationRequest = { instanceId: string, kind: OperationKind, code: string | null, };
+export type StartOperationRequest = { launcherId: string, instanceId: string, kind: OperationKind, code: string | null, };
 export type GetOperationRequest = { operationId: string, };
 export type LoaderDto = { kind: string | null, build: string | null, enabled: boolean, };
 export type InstanceDto = { id: string, launcherId: string | null, slug: string | null, title: string | null, minecraftVersion: string | null, server: string | null, loader: LoaderDto | null, javaVersion: number | null, suggestedRam: number | null, icon: string | null, landscape: string | null, poster: string | null, animation: string | null, locked: boolean, downloads: number, };
@@ -21,7 +21,7 @@ export type OperationResult = { "kind": "sync", downloaded: number, removed: num
 export type ErrorCode = "invalid_request" | "not_found" | "unauthorized" | "api" | "network" | "filesystem" | "decode" | "operation_conflict" | "internal";
 export type ErrorContext = { httpStatus: number, };
 export type BridgeError = { code: ErrorCode, operationId: string | null, stage: ProgressStage | null, context: ErrorContext | null, };
-export type OperationSnapshot = { operationId: string, instanceId: string, kind: OperationKind, status: OperationStatus, sequence: number, progress: OperationProgress | null, result: OperationResult | null, error: BridgeError | null, };
+export type OperationSnapshot = { operationId: string, launcherId: string, instanceId: string, kind: OperationKind, status: OperationStatus, sequence: number, progress: OperationProgress | null, result: OperationResult | null, error: BridgeError | null, };
 
 export const COMMANDS = {
   listInstances: 'plugin:hostmylauncher|list_instances',

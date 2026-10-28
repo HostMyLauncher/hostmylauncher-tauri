@@ -57,7 +57,7 @@ export async function runExample() {
   try {
     const client = createClient(transport);
     const instance = await client.getInstance({ launcherId: 'demo', instanceId: 'demo' });
-    const accepted = await client.startOperation({ instanceId: 'demo', kind: 'verify', code: null });
+    const accepted = await client.startOperation({ launcherId: 'demo', instanceId: 'demo', kind: 'verify', code: null });
     let observed = 0;
     const completed = await Promise.race([
       new Promise((resolve, reject) => {

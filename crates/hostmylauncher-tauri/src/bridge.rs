@@ -25,7 +25,7 @@ pub struct Bridge(Arc<Inner>);
 struct Inner {
     client: Client,
     catalog: BTreeSet<String>,
-    registrations: BTreeMap<String, InstanceRegistration>,
+    registrations: BTreeMap<(String, String), InstanceRegistration>,
     state: Mutex<State>,
     sinks: Mutex<Vec<EventSink>>,
 }
@@ -160,7 +160,13 @@ impl Bridge {
             }
             resources(&registration)?;
             if registered
-                .insert(registration.instance_id.clone(), registration)
+                .insert(
+                    (
+                        registration.launcher_id.clone(),
+                        registration.instance_id.clone(),
+                    ),
+                    registration,
+                )
                 .is_some()
             {
                 return Err(error(ErrorCode::InvalidRequest));
@@ -350,13 +356,14 @@ impl Bridge {
         &self,
         request: StartOperationRequest,
     ) -> Result<OperationSnapshot, BridgeError> {
+        self.catalog(&request.launcher_id)?;
         if !identifier(&request.instance_id) || !code_valid(request.code.as_deref()) {
             return Err(error(ErrorCode::InvalidRequest));
         }
         let registration = self
             .0
             .registrations
-            .get(&request.instance_id)
+            .get(&(request.launcher_id.clone(), request.instance_id.clone()))
             .ok_or_else(|| error(ErrorCode::NotFound))?
             .clone();
         let runtime =
@@ -379,6 +386,7 @@ impl Bridge {
             let id = format!("operation-{next}");
             let accepted = OperationSnapshot {
                 operation_id: id.clone(),
+                launcher_id: request.launcher_id.clone(),
                 instance_id: request.instance_id.clone(),
                 kind: request.kind,
                 status: OperationStatus::Queued,

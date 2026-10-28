@@ -31,7 +31,7 @@ must be documented with the implementation; generated files are not hand-edited.
 | `plugin:hostmylauncher\|get_instance` | launcherId, instanceId | InstanceDto |
 | `plugin:hostmylauncher\|resolve_by_code` | launcherIds (1–20), code | InstanceDto |
 | `plugin:hostmylauncher\|get_instance_files` | launcherId, instanceId, code (nullable) | FileDescriptorDto[] |
-| `plugin:hostmylauncher\|start_operation` | instanceId, kind, code (nullable) | OperationSnapshot |
+| `plugin:hostmylauncher\|start_operation` | launcherId, instanceId, kind, code (nullable) | OperationSnapshot |
 | `plugin:hostmylauncher\|get_operation` | operationId | OperationSnapshot |
 
 Query results are explicit projections, never serialization of base models with
@@ -55,7 +55,7 @@ state, making provider requests, or touching files. Execution failures are store
 in the operation's terminal snapshot. A successful start response means accepted,
 not successful installation.
 
-Snapshots contain operationId, instanceId, kind, status, sequence, progress,
+Snapshots contain operationId, launcherId, instanceId, kind, status, sequence, progress,
 result and error. Sequence increases monotonically within one operation. Results
 and errors are null before terminal state; terminal success contains result only,
 terminal failure contains error only. State survives frontend remounts during the
@@ -67,7 +67,10 @@ Event delivery is best effort: query get_operation to recover authoritative stat
 Consumers ignore duplicate/older sequences. Register the listener before querying
 state to avoid a query/subscription gap. Callbacks never revive terminal operations.
 
-Admission guards operate on filesystem identity, not merely instanceId. Existing
+Registrations and starts are scoped by the `(launcherId, instanceId)` pair; the same
+remote instance ID may identify separate host-managed installations under different
+providers. `get_operation` remains keyed by globally unique operationId. Admission
+guards operate on filesystem identity, not merely provider-scoped identity. Existing
 canonical aliases, ancestor/descendant roots and conflicting manifest resources
 must not permit overlapping in-process operations. This cannot prevent another
 process from modifying the installation; the launcher must ensure exclusive use.
@@ -132,6 +135,7 @@ import { createClient } from '@hostmylauncher/tauri';
 
 const client = createClient();
 const accepted = await client.startOperation({
+  launcherId: 'managed-provider',
   instanceId: 'managed-instance',
   kind: 'sync',
   code: null,
