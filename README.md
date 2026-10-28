@@ -12,6 +12,7 @@ are recorded in [IPC v1 tasks](odd/tasks/ipc-v1.md); this is not a published rel
 | `crates/hostmylauncher-tauri` | `hostmylauncher-tauri` | Rust commands, IPC DTOs, structured errors, and operation events |
 | `packages/tauri` | `@hostmylauncher/tauri` | Framework-independent TypeScript client and subscriptions |
 | `examples/minimal-launcher` | Headless example | Real Rust service + built TS client with a local mock provider |
+| `examples/webview-validation` | Tauri/Wry example | Real WebView IPC validation against a local mock provider |
 
 Cargo and pnpm manage their respective workspaces. No extra monorepo build system is required.
 
@@ -48,11 +49,13 @@ Implementation checks passed, including Rust service tests, real MockRuntime IPC
 TypeScript checks and the headless cross-language example. Independent direct Rust
 execution and consuming-host capability discovery/build are now proven. Native
 assessment now succeeds. Contract, service, plugin and TypeScript client work-unit
-reviews, including both consumer fixtures, are approved with their exact
-acknowledgements consumed. The final verification-documentation snapshot is a
+reviews, including the existing headless and capability fixtures, are approved with
+their exact acknowledgements consumed. The separate Wry fixture has now completed
+an actual local WebView run; this validates only the fixture's mock-provider IPC
+path, not integration with a downstream launcher or real launcher data. The final verification-documentation snapshot is a
 separate passive review candidate; its receipt is recorded outside itself. See
 [verification status](docs/verification.md) for evidence and incident disposition;
-this is not a published or real-WebView-validated production release.
+this is not a published production release.
 
 ## Development checks
 
@@ -85,8 +88,10 @@ cargo run -p hostmylauncher-tauri --bin generate-contract
 ```
 
 See the [minimal consumer](examples/minimal-launcher/README.md) for its build/smoke
-commands and the [capability host](examples/capability-host/README.md) for the actual
-consuming-app permission-discovery build check. Headless service and MockRuntime IPC tests are not real WebView proof.
+commands, the [capability host](examples/capability-host/README.md) for the actual
+consuming-app permission-discovery build check, and the [WebView validation fixture](examples/webview-validation/README.md)
+for its local-only desktop run. The fixture's actual Wry execution succeeded;
+headless service and MockRuntime IPC tests remain distinct from that proof.
 Format only the bridge package: `cargo fmt --all` also traverses local path
 dependencies and must not be used here because the sibling base is read-only.
 Scoped fixtures clean up normally; inspect only `target/test-tmp` after interrupted
@@ -113,7 +118,8 @@ Keep this task open until all five checks are enforced by CI.
 ## Next steps
 
 1. Implement the CI divergence checklist above.
-2. Validate real WebView behavior; consuming-app capability discovery/build is proven.
+2. Validate real WebView behavior; consuming-app capability discovery/build is
+   proven — complete in `examples/webview-validation` with a local mock provider.
 3. Select a license and reproducible base dependency before publication.
 4. Integrate the bridge into a downstream launcher application and validate incomplete-installation retry behavior.
 5. Revisit the documented v2 roadmap only after base-library API support exists.

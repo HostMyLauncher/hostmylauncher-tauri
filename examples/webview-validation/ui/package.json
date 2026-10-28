@@ -1,0 +1,14 @@
+{
+  "name": "hostmylauncher-webview-validation-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@hostmylauncher/tauri": "file:../../../packages/tauri"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

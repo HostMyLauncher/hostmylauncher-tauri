@@ -15,7 +15,33 @@
 | Real Rust service + built TS headless consumer | Build and smoke test passed after missing-example RED |
 
 Checks use small scoped fixtures and project-confined disk-backed TMPDIR. MockRuntime
-and the headless subprocess example do not establish real WebView execution.
+and the headless subprocess example do not establish real WebView execution; the
+separate native Wry result below is the real-WebView evidence.
+
+## Real WebView fixture status
+
+`examples/webview-validation` contains a separate Tauri 2/Wry app and UI that use
+the real built TypeScript client, a local-only mock provider, and a scoped `TempDir`
+destination. In the observed run, the UI received download progress and terminal
+events, recovered terminal state through `getOperation`, and called subscription
+cleanup. The host verified the downloaded fixture file and wrote the proof JSON
+before exiting. Source and compilation alone are not real WebView proof; the
+successful native run recorded below is.
+
+The fixture-only Cargo lock was aligned to Tauri 2.12.4 after the initial lock
+resolved incompatible `tauri-runtime` and `tauri-runtime-wry` versions. The final
+offline `cargo check --manifest-path examples/webview-validation/Cargo.toml` passed.
+An earlier Vite build attempt timed out after 30 seconds; after the user explicitly
+authorized an unbounded rerun, the Vite build and native Wry app run both completed
+successfully. The app launched in the graphical session and exited 0. Its result
+JSON, `target/test-tmp/webview-proof-1793157044804709258.json`, records
+`webview: true`, `downloadProgressEvent: true`, `terminalEvent: "succeeded"`,
+`recovered: "succeeded"`, `subscriptionCleanupCalled: true`,
+`destinationVerified: true`, and one downloaded mock file. The provider was local
+wiremock only; the destination and manifest were inside a scoped `TempDir`. This
+proves the fixture's actual WebView IPC path, not integration with a downstream
+launcher or use of real launcher data. GTK/WebKitGTK and an interactive display were present; no
+missing system library was identified.
 
 ## Independent verification limits
 
@@ -81,11 +107,11 @@ All executed offline or from installed dependencies, with project-confined TMPDI
 - Capability host: actual consuming-app cargo check passed.
 - Rust workspace: 15 passed; generated contract --check current.
 
-Independent execution and consumer-build proofs are closed. Prior independent
-proof applies to the unchanged implementation files; no new behavior was added
-while splitting local commits. Real WebView execution remains untested, CI remains
-a future task, and reproducible published dependency sourcing/license selection
-remain prerequisites for publication. No push, pull request or publication occurred.
+Independent execution, consuming-host build, and local real-WebView proofs are
+closed for their respective fixtures. The WebView proof is limited to the mock
+provider and isolated destination described above; CI remains a future task, and
+reproducible published dependency sourcing/license selection remain prerequisites
+for publication. No push, pull request or publication occurred.
 
 ## Resolved scope/storage incident
 

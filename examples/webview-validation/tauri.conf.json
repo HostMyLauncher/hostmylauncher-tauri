@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hostmylauncher WebView proof",
+  "version": "0.1.0",
+  "identifier": "dev.hostmylauncher.webview-validation",
+  "build": { "frontendDist": "ui/dist" },
+  "app": { "withGlobalTauri": true, "windows": [{ "title": "Hostmylauncher WebView proof", "width": 560, "height": 420 }] }
+}
