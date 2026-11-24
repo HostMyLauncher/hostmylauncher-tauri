@@ -1,15 +1,16 @@
 //! Session-scoped provider service, independent of the Tauri runtime.
 use crate::contract::*;
 use futures_util::FutureExt;
-use hostmylauncher::{Client, FileIssueKind, ListOpts, SyncProgress, SyncStage};
+use hostmylauncher::{Client, FileIssueKind, InstanceWatcher, ListOpts, SyncProgress, SyncStage};
 use std::{
     collections::{BTreeMap, BTreeSet},
     panic::{catch_unwind, AssertUnwindSafe},
     path::{Component, Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 pub type EventSink = Arc<dyn Fn(OperationSnapshot) + Send + Sync + 'static>;
+pub type CatalogSink = Arc<dyn Fn(CatalogSnapshot) + Send + Sync + 'static>;
 
 /// Where a host-managed installation lives. Never accepted through IPC.
 #[derive(Clone, Debug)]
@@ -60,6 +61,15 @@ struct Inner {
     locator: Box<dyn InstanceLocator>,
     state: Mutex<State>,
     sinks: Mutex<Vec<EventSink>>,
+    catalog_sinks: Mutex<Vec<CatalogSink>>,
+    live: Mutex<LiveCatalog>,
+}
+/// The single provider catalog kept live over the real-time connection.
+#[derive(Default)]
+struct LiveCatalog {
+    /// Bumped by every watch request, so a slower earlier start cannot win.
+    generation: u64,
+    task: Option<tokio::task::AbortHandle>,
 }
 #[derive(Default)]
 struct State {
@@ -193,6 +203,8 @@ impl Bridge {
             locator: Box::new(locator),
             state: Mutex::new(State::default()),
             sinks: Mutex::new(vec![sink]),
+            catalog_sinks: Mutex::new(Vec::new()),
+            live: Mutex::new(LiveCatalog::default()),
         })))
     }
 
@@ -226,6 +238,19 @@ impl Bridge {
     /// sink, it receives public snapshots outside all service locks.
     pub fn add_event_sink(&self, sink: EventSink) {
         lock(&self.0.sinks).push(sink);
+    }
+
+    /// Attach a host emitter for live catalog snapshots; called once by plugin setup.
+    pub fn add_catalog_sink(&self, sink: CatalogSink) {
+        lock(&self.0.catalog_sinks).push(sink);
+    }
+
+    fn emit_catalog(&self, snapshot: CatalogSnapshot) {
+        let sinks = lock(&self.0.catalog_sinks).clone();
+        for sink in sinks {
+            // Best-effort like operation events; a failing sink cannot stop the watch.
+            let _ = catch_unwind(AssertUnwindSafe(|| sink(snapshot.clone())));
+        }
     }
 
     fn emit(&self, snapshot: OperationSnapshot) -> Result<(), BridgeError> {
@@ -312,6 +337,70 @@ impl Bridge {
         instances
             .into_iter()
             .map(|instance| self.project_instance(instance))
+            .collect()
+    }
+    /// Keeps one provider's public catalog live and returns its current list.
+    /// Later changes arrive as [`CatalogSnapshot`]s through the catalog sinks.
+    /// Watching another provider, or `None`, closes the previous connection.
+    pub async fn watch_catalog(
+        &self,
+        request: WatchCatalogRequest,
+    ) -> Result<Vec<InstanceDto>, BridgeError> {
+        if let Some(launcher_id) = &request.launcher_id {
+            self.catalog(launcher_id)?;
+        }
+        let runtime =
+            tokio::runtime::Handle::try_current().map_err(|_| error(ErrorCode::Internal))?;
+        let generation = {
+            let mut live = lock(&self.0.live);
+            live.generation += 1;
+            if let Some(task) = live.task.take() {
+                task.abort();
+            }
+            live.generation
+        };
+        let Some(launcher_id) = request.launcher_id else {
+            return Ok(Vec::new());
+        };
+        let mut watcher = InstanceWatcher::start(self.0.client.clone(), &launcher_id)
+            .await
+            .map_err(map_error)?;
+        let instances = self.project_catalog(watcher.current());
+
+        let mut live = lock(&self.0.live);
+        if live.generation != generation {
+            // A newer request took over; dropping the watcher closes its socket.
+            return Ok(instances);
+        }
+        let bridge = Arc::downgrade(&self.0);
+        let mut last = instances.clone();
+        live.task = Some(
+            runtime
+                .spawn(async move {
+                    while watcher.changed().await {
+                        let Some(inner) = Weak::upgrade(&bridge) else {
+                            break;
+                        };
+                        let bridge = Bridge(inner);
+                        let next = bridge.project_catalog(watcher.current());
+                        if next != last {
+                            last = next.clone();
+                            bridge.emit_catalog(CatalogSnapshot {
+                                launcher_id: launcher_id.clone(),
+                                instances: next,
+                            });
+                        }
+                    }
+                })
+                .abort_handle(),
+        );
+        Ok(instances)
+    }
+    /// Live lists skip entries outside the catalog instead of failing the watch.
+    fn project_catalog(&self, instances: Vec<hostmylauncher::Instance>) -> Vec<InstanceDto> {
+        instances
+            .into_iter()
+            .filter_map(|instance| self.project_instance(instance).ok())
             .collect()
     }
     pub async fn get_instance(

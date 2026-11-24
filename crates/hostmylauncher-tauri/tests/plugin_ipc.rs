@@ -50,7 +50,7 @@ fn context() -> tauri::Context<MockRuntime> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn all_six_generated_commands_reach_real_tauri_bindings() {
+async fn all_generated_commands_reach_real_tauri_bindings() {
     let server = MockServer::start().await;
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
@@ -96,6 +96,11 @@ async fn all_six_generated_commands_reach_real_tauri_bindings() {
             "getOperation",
             json!({"operationId":"unknown"}),
             ErrorCode::NotFound,
+        ),
+        (
+            "watchCatalog",
+            json!({"launcherId":"outside"}),
+            ErrorCode::InvalidRequest,
         ),
     ];
     for (key, request, expected) in cases {

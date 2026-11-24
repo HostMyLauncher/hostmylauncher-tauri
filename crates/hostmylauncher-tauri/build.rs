@@ -27,7 +27,7 @@ fn main() {
     let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo OUT_DIR"));
     let permission_file = out.join("hostmylauncher-permissions.json");
     std::fs::write(&permission_file, serde_json::to_vec(&serde_json::json!({
-        "default": { "description": "Allows the six host-configured bridge commands.", "permissions": default },
+        "default": { "description": "Allows every host-configured bridge command.", "permissions": default },
         "permission": permissions
     })).expect("serialize permissions")).expect("write permissions");
     let paths_file = out.join("hostmylauncher-permission-files");

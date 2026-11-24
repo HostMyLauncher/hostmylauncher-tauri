@@ -9,6 +9,7 @@ macro_rules! hostmylauncher_commands {
             getInstanceFiles => get_instance_files,
             startOperation => start_operation,
             getOperation => get_operation,
+            watchCatalog => watch_catalog,
         }
     };
 }

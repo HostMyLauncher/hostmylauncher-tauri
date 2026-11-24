@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient } from '../src/client.ts';
-import { COMMANDS, OPERATION_EVENT } from '../src/generated/contract.ts';
+import { CATALOG_EVENT, COMMANDS, OPERATION_EVENT } from '../src/generated/contract.ts';
 
 const snapshot = (operationId = 'a', sequence = 0, status = 'queued') => ({
   operationId, launcherId: 'launcher', instanceId: 'instance', kind: 'sync', status, sequence,
@@ -37,8 +37,10 @@ test('generated identifiers match the registered wire contract', () => {
     getInstanceFiles: 'plugin:hostmylauncher|get_instance_files',
     startOperation: 'plugin:hostmylauncher|start_operation',
     getOperation: 'plugin:hostmylauncher|get_operation',
+    watchCatalog: 'plugin:hostmylauncher|watch_catalog',
   });
   assert.equal(OPERATION_EVENT, 'hostmylauncher://operation');
+  assert.equal(CATALOG_EVENT, 'hostmylauncher://catalog');
 });
 
 test('every command wraps its exact request; optional inputs stay explicit null', async () => {
@@ -154,4 +156,19 @@ test('late setup rejection after disposal is handled without notifying caller', 
   const f = fixture({ delayed: true }), errors = [];
   const stop = f.client.watchOperation('a', assert.fail, error => errors.push(error));
   stop(); f.setup.reject(new Error('late')); await tick(); assert.deepEqual(errors, []);
+});
+
+test('catalog subscription delivers snapshots until cleanup, even before registration', async () => {
+  const f = fixture({ delayed: true }), seen = [];
+  const catalog = { launcherId: 'launcher', instances: [] };
+  const stop = f.client.subscribeCatalog(value => seen.push(value), assert.fail);
+  assert.deepEqual(f.calls, [['listen', CATALOG_EVENT]]);
+  f.emit(catalog); f.ready(); await tick();
+  stop(); f.emit(catalog);
+  assert.deepEqual(seen, [catalog]); assert.equal(f.removed(), 1);
+
+  const early = fixture({ delayed: true });
+  early.client.subscribeCatalog(assert.fail, assert.fail)();
+  early.ready(); await tick(); early.emit(catalog);
+  assert.equal(early.removed(), 1);
 });

@@ -41,6 +41,13 @@ async fn start_operation(
     service.start_operation(request).await
 }
 #[tauri::command]
+async fn watch_catalog(
+    service: State<'_, Bridge>,
+    request: WatchCatalogRequest,
+) -> Result<Vec<InstanceDto>, BridgeError> {
+    service.watch_catalog(request).await
+}
+#[tauri::command]
 async fn get_operation(
     service: State<'_, Bridge>,
     request: GetOperationRequest,
@@ -66,9 +73,13 @@ pub fn init<R: Runtime>(service: Bridge) -> TauriPlugin<R> {
                 )
                 .into());
             }
-            let app = app.clone();
+            let emitter = app.clone();
             service.add_event_sink(std::sync::Arc::new(move |snapshot| {
-                let _ = app.emit(registry::OPERATION_EVENT, snapshot);
+                let _ = emitter.emit(registry::OPERATION_EVENT, snapshot);
+            }));
+            let emitter = app.clone();
+            service.add_catalog_sink(std::sync::Arc::new(move |snapshot| {
+                let _ = emitter.emit(registry::CATALOG_EVENT, snapshot);
             }));
             Ok(())
         })

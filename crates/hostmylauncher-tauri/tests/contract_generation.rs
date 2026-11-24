@@ -16,14 +16,17 @@ fn exact_identifiers_are_generated_from_registration_list() {
             ),
             ("startOperation", "plugin:hostmylauncher|start_operation"),
             ("getOperation", "plugin:hostmylauncher|get_operation"),
+            ("watchCatalog", "plugin:hostmylauncher|watch_catalog"),
         ]
     );
     assert_eq!(registry::OPERATION_EVENT, "hostmylauncher://operation");
+    assert_eq!(registry::CATALOG_EVENT, "hostmylauncher://catalog");
     let generated = registry::typescript_contract();
     for (key, command) in registry::COMMANDS {
         assert!(generated.contains(&format!("{key}: '{command}'")));
     }
     assert!(generated.contains("export const OPERATION_EVENT = 'hostmylauncher://operation'"));
+    assert!(generated.contains("export const CATALOG_EVENT = 'hostmylauncher://catalog'"));
     assert!(
         !generated.contains("bigint"),
         "JSON wire counters are numbers"

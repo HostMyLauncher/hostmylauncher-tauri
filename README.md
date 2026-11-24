@@ -136,6 +136,23 @@ bytes downloaded across all of the operation's files over their total size (null
 when a file has no declared size); `install` progress counts prepared entries out
 of the total. Verification has no detailed progress. Cancellation is not supported.
 
+## Live catalog
+
+```ts
+const stop = client.subscribeCatalog(
+  (snapshot) => {
+    if (snapshot.launcherId === selected) render(snapshot.instances);
+  },
+  (error) => console.error(error),
+);
+render(await client.watchCatalog({ launcherId: selected })); // current list
+// Changing provider closes the previous connection; null closes it.
+await client.watchCatalog({ launcherId: null });
+```
+
+One provider is watched at a time over its WebSocket. The bridge sends the whole list
+after each change: new, edited, hidden or deleted instances.
+
 The full IPC contract (commands, payloads, progress, results and errors) is in
 [docs/ipc-v1.md](docs/ipc-v1.md).
 
@@ -154,7 +171,7 @@ cargo run -p hostmylauncher-tauri --bin generate-contract -- --check
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`plugin-tests` runs the six real command handlers on Tauri's MockRuntime, without a
+`plugin-tests` runs every real command handler on Tauri's MockRuntime, without a
 WebView. Each example's README explains how to run it.
 
 The Rust DTOs in `crates/hostmylauncher-tauri/src/contract.rs` are the source of truth

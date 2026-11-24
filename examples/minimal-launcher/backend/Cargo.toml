@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 hostmylauncher-tauri = { path = "../../../crates/hostmylauncher-tauri" }
-hostmylauncher = { git = "https://github.com/HostMyLauncher/hostmylauncher-rs", rev = "95b06db7c4110ee9ff58ada8aef34b69833061fd" }
+hostmylauncher = { git = "https://github.com/HostMyLauncher/hostmylauncher-rs", rev = "61058fd995e356e9472cdcda9170ca9bde2e30b4" }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tempfile = "3"

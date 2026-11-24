@@ -6,7 +6,7 @@ mod commands;
 pub mod contract;
 pub mod registry;
 
-pub use bridge::{Bridge, EventSink, InstanceLocation, InstanceLocator, LocateError};
+pub use bridge::{Bridge, CatalogSink, EventSink, InstanceLocation, InstanceLocator, LocateError};
 
 #[cfg(feature = "plugin")]
 pub mod plugin;

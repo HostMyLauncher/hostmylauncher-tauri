@@ -49,6 +49,10 @@ pub struct StartOperationRequest {
 dto!(GetOperationRequest {
     operation_id: String
 });
+// `null` stops the live catalog without starting another.
+dto!(WatchCatalogRequest {
+    launcher_id: Option<String>
+});
 dto!(LoaderDto { kind: Option<String>, build: Option<String>, enabled: bool });
 dto!(InstanceDto {
     id: String, launcher_id: Option<String>, slug: Option<String>, title: Option<String>,
@@ -143,6 +147,11 @@ dto!(OperationSnapshot {
     sequence: u64 => "number", progress: Option<OperationProgress>,
     result: Option<OperationResult>, error: Option<BridgeError>
 });
+// The whole public catalog of the watched provider, after a change.
+dto!(CatalogSnapshot {
+    launcher_id: String,
+    instances: Vec<InstanceDto>
+});
 
 /// A deterministic single module, generated from derives rather than DTO copies.
 pub fn typescript_types() -> String {
@@ -161,6 +170,7 @@ pub fn typescript_types() -> String {
         GetInstanceFilesRequest,
         StartOperationRequest,
         GetOperationRequest,
+        WatchCatalogRequest,
         LoaderDto,
         InstanceDto,
         HashesDto,
@@ -177,7 +187,8 @@ pub fn typescript_types() -> String {
         ErrorCode,
         ErrorContext,
         BridgeError,
-        OperationSnapshot
+        OperationSnapshot,
+        CatalogSnapshot
     );
     output
 }

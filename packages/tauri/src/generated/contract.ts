@@ -5,6 +5,7 @@ export type ResolveByCodeRequest = { launcherIds: Array<string>, code: string, }
 export type GetInstanceFilesRequest = { launcherId: string, instanceId: string, code: string | null, };
 export type StartOperationRequest = { launcherId: string, instanceId: string, kind: OperationKind, code: string | null, };
 export type GetOperationRequest = { operationId: string, };
+export type WatchCatalogRequest = { launcherId: string | null, };
 export type LoaderDto = { kind: string | null, build: string | null, enabled: boolean, };
 export type InstanceDto = { id: string, launcherId: string | null, slug: string | null, title: string | null, minecraftVersion: string | null, server: string | null, loader: LoaderDto | null, javaVersion: number | null, suggestedRam: number | null, icon: string | null, landscape: string | null, poster: string | null, animation: string | null, locked: boolean, noPremium: boolean, downloads: number, };
 export type HashesDto = { sha1: string | null, sha512: string | null, };
@@ -22,6 +23,7 @@ export type ErrorCode = "invalid_request" | "not_found" | "unauthorized" | "api"
 export type ErrorContext = { httpStatus: number, };
 export type BridgeError = { code: ErrorCode, operationId: string | null, stage: ProgressStage | null, context: ErrorContext | null, };
 export type OperationSnapshot = { operationId: string, launcherId: string, instanceId: string, kind: OperationKind, status: OperationStatus, sequence: number, progress: OperationProgress | null, result: OperationResult | null, error: BridgeError | null, };
+export type CatalogSnapshot = { launcherId: string, instances: Array<InstanceDto>, };
 
 export const COMMANDS = {
   listInstances: 'plugin:hostmylauncher|list_instances',
@@ -30,5 +32,7 @@ export const COMMANDS = {
   getInstanceFiles: 'plugin:hostmylauncher|get_instance_files',
   startOperation: 'plugin:hostmylauncher|start_operation',
   getOperation: 'plugin:hostmylauncher|get_operation',
+  watchCatalog: 'plugin:hostmylauncher|watch_catalog',
 } as const;
 export const OPERATION_EVENT = 'hostmylauncher://operation' as const;
+export const CATALOG_EVENT = 'hostmylauncher://catalog' as const;

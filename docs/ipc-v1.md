@@ -35,12 +35,27 @@ must be documented with the implementation; generated files are not hand-edited.
 | `plugin:hostmylauncher\|get_instance_files` | launcherId, instanceId, code (nullable) | FileDescriptorDto[] |
 | `plugin:hostmylauncher\|start_operation` | launcherId, instanceId, kind, code (nullable) | OperationSnapshot |
 | `plugin:hostmylauncher\|get_operation` | operationId | OperationSnapshot |
+| `plugin:hostmylauncher\|watch_catalog` | launcherId (nullable) | InstanceDto[] |
 
 Query results are explicit projections, never serialization of base models with
 flattened unknown fields. InstanceDto includes public ID/catalog/title/version/
 loader/Java/RAM/artwork/locked/noPremium/download metadata, but no embedded files, user whitelist,
 access code or arbitrary extra fields. File descriptors expose provider relative
 path/name, size and hashes, never download URLs.
+
+## Live catalog
+
+`watch_catalog` keeps one catalog provider's public instance list live over the
+provider's real-time connection and answers with its current list. After each change
+the bridge emits `hostmylauncher://catalog` with a `CatalogSnapshot`
+(`launcherId`, the whole `instances` list). Only changes to the list are emitted.
+
+There is a single watch per bridge. Watching another provider closes the previous
+connection immediately; `launcherId: null` closes it without opening another. A slower
+earlier request never replaces a newer one, but a late snapshot can still be in flight
+when the provider changes, so consumers compare `launcherId` with the one they watch.
+Reconnection and replay of missed events are handled by hostmylauncher-rs. If the
+initial list cannot be fetched, the command fails and nothing is watched.
 
 ## Operations
 
@@ -167,7 +182,8 @@ Query/start methods accept the generated request object and return promises.
 Nullable wire inputs such as code/limit/offset are explicit nulls, not omitted.
 `subscribeOperations(onSnapshot, onError)` watches the session-wide event stream;
 `watchOperation(operationId, onSnapshot, onError)` watches one operation and recovers
-its latest state after registering the listener. Both return cleanup synchronously.
+its latest state after registering the listener. `subscribeCatalog(onSnapshot, onError)`
+receives live catalog snapshots started by `watchCatalog`. All return cleanup synchronously.
 The error handler is required. Operation failures are represented in snapshots;
 subscription or recovery failures are delivered to the error handler.
 

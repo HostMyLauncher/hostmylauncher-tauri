@@ -1,5 +1,6 @@
-import { COMMANDS, OPERATION_EVENT } from './generated/contract.ts';
+import { CATALOG_EVENT, COMMANDS, OPERATION_EVENT } from './generated/contract.ts';
 import type {
+  CatalogSnapshot,
   FileDescriptorDto,
   GetInstanceFilesRequest,
   GetInstanceRequest,
@@ -9,11 +10,13 @@ import type {
   OperationSnapshot,
   ResolveByCodeRequest,
   StartOperationRequest,
+  WatchCatalogRequest,
 } from './generated/contract.ts';
 import { createTauriTransport } from './transport.ts';
 import type { Cleanup, Transport } from './transport.ts';
 
 export type OperationListener = (snapshot: OperationSnapshot) => void;
+export type CatalogListener = (snapshot: CatalogSnapshot) => void;
 export type SubscriptionErrorHandler = (error: unknown) => void;
 
 export interface Client {
@@ -27,6 +30,13 @@ export interface Client {
   subscribeOperations(onSnapshot: OperationListener, onError: SubscriptionErrorHandler): Cleanup;
   /** Listens first, then queries session state to recover missed events. */
   watchOperation(operationId: string, onSnapshot: OperationListener, onError: SubscriptionErrorHandler): Cleanup;
+  /**
+   * Keeps one provider's catalog live and resolves with its current list; `null`
+   * stops it. Watching another provider closes the previous connection.
+   */
+  watchCatalog(request: WatchCatalogRequest): Promise<InstanceDto[]>;
+  /** Snapshots of the watched catalog after each change. Check `launcherId`. */
+  subscribeCatalog(onSnapshot: CatalogListener, onError: SubscriptionErrorHandler): Cleanup;
 }
 
 /** Uses the real Tauri adapter by default; inject Transport for non-WebView tests. */
@@ -97,6 +107,34 @@ export function createClient(transport: Transport = createTauriTransport()): Cli
     };
   }
 
+  function subscribeCatalog(onSnapshot: CatalogListener, onError: SubscriptionErrorHandler): Cleanup {
+    let disposed = false;
+    let unlisten: Cleanup | undefined;
+    async function setup(): Promise<void> {
+      try {
+        const remove = await transport.listen<CatalogSnapshot>(CATALOG_EVENT, snapshot => {
+          if (!disposed) onSnapshot(snapshot);
+        });
+        if (disposed) remove();
+        else unlisten = remove;
+      } catch (error) {
+        if (disposed) return;
+        try {
+          onError(error);
+        } catch (handlerError) {
+          queueMicrotask(() => { throw handlerError; });
+        }
+      }
+    }
+    void setup();
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      unlisten?.();
+      unlisten = undefined;
+    };
+  }
+
   return {
     listInstances: request => transport.invoke(COMMANDS.listInstances, { request }),
     getInstance: request => transport.invoke(COMMANDS.getInstance, { request }),
@@ -106,5 +144,7 @@ export function createClient(transport: Transport = createTauriTransport()): Cli
     getOperation,
     subscribeOperations: (onSnapshot, onError) => subscribe(onSnapshot, onError),
     watchOperation: (operationId, onSnapshot, onError) => subscribe(onSnapshot, onError, operationId),
+    watchCatalog: request => transport.invoke(COMMANDS.watchCatalog, { request }),
+    subscribeCatalog,
   };
 }
