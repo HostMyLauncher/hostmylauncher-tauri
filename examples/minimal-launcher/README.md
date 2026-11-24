@@ -12,7 +12,7 @@ commands needed by this smoke test; it is not a production IPC replacement.
 
 ## Run
 
-From the repository root, after the bridge implementation is available:
+From the repository root:
 
 ```sh
 mkdir -p target/test-tmp
@@ -24,8 +24,8 @@ node --test examples/minimal-launcher/smoke.test.mjs
 ```
 
 Cargo may need to fetch dependencies. The Node runner requires Node 22 or newer.
-The example is a separate non-publishable Cargo workspace, using both local
-packages. It has no frontend framework or production provider credentials.
+The example is a separate, unpublished Cargo workspace that uses both packages
+from this repository. It has no frontend framework or production provider credentials.
 
 Fixtures are small scoped TempDir directories under TMPDIR and are cleaned when
 the backend exits. Cargo's target output is intentional build output, not fixture

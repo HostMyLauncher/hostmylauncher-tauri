@@ -38,7 +38,7 @@ fn exact_identifiers_are_generated_from_registration_list() {
 fn generated_file_matches_rust_source() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../packages/tauri/src/generated/contract.ts");
-    let actual = std::fs::read_to_string(path)
-        .expect("parent must run generate-contract before this consistency test");
+    let actual =
+        std::fs::read_to_string(path).expect("run generate-contract before this consistency test");
     assert_eq!(actual, registry::typescript_contract());
 }

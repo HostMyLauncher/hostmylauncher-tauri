@@ -15,9 +15,8 @@ No IPC command accepts a destination, manifest path, arbitrary remote file URL,
 base API URL, or bearer token. The bridge fetches provider files itself for operations.
 Catalog queries must remain inside the host-configured catalog.
 
-The local sibling dependency on `hostmylauncher-rs` is development-only. Both
-packages remain non-publishable until reproducible dependency sourcing and a
-license are selected. The base is never modified by this integration.
+The bridge depends on `hostmylauncher-rs` pinned to a git revision. Both packages
+remain unpublished until a license is selected.
 
 ## Wire naming
 
@@ -173,8 +172,7 @@ subscription or recovery failures are delivered to the error handler.
 
 ## Deferred to v2
 
-The user explicitly deferred these capabilities until the public base-library API
-supports them first:
+These capabilities wait until the public hostmylauncher-rs API supports them:
 
 - [ ] Detailed verification progress.
 - [ ] Typed integrity errors, without parsing generic error messages.
@@ -187,12 +185,9 @@ adapter. This is a roadmap, not a v1 implementation requirement.
 
 ## Verification
 
-Use isolated temporary installations and a local mock provider. Exercise rejection
-without side effects, state recovery/correlation, same-resource conflicts, safe
-errors/results, base sync/verify/repair behavior, cleanup and stale-event handling.
-The minimal example consumes both packages. Mocked IPC contract tests are not proof
-of execution inside a real Tauri WebView; document that distinction.
-
-The README's future CI checklist remains pending until enforced in CI. Local
-checks must cover generated DTOs and actual command/event registrations, not just
-matching payload shapes.
+Tests use isolated temporary installations and a local mock provider. They cover
+rejection without side effects, state recovery and correlation, same-resource
+conflicts, safe errors and results, sync/verify/repair behavior, and stale events.
+MockRuntime IPC tests do not run inside a real WebView; `examples/webview-validation`
+does. Checks must cover the generated DTOs and the actual command/event
+registrations, not just matching payload shapes.
