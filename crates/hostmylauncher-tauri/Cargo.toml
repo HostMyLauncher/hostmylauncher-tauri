@@ -2,6 +2,7 @@
 name = "hostmylauncher-tauri"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 publish.workspace = true
 # Tauri's consuming build discovers hostmylauncher permissions through this key.
 links = "hostmylauncher"

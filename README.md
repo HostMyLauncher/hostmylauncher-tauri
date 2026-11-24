@@ -192,8 +192,12 @@ hostmylauncher = { path = "../hostmylauncher-rs" }
 
 ## Status
 
-- Not published to crates.io or npm; no license chosen yet.
+- Not published to crates.io or npm.
 - No CI yet. It should run the commands above, including the contract `--check`, so
   the Rust commands and the TypeScript client cannot drift apart.
 - Planned once hostmylauncher-rs supports them: detailed verification progress,
   typed integrity errors, and cancellation.
+
+## License
+
+[MIT](LICENSE)
