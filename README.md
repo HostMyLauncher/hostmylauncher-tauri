@@ -2,8 +2,8 @@
 
 Optional Tauri 2 bridge between `hostmylauncher-rs` and launcher frontends.
 The v1 implementation provides a Rust session service, an opt-in Tauri plugin and
-a framework-independent TypeScript client. Validation status and remaining proof
-are recorded in [IPC v1 tasks](odd/tasks/ipc-v1.md); this is not a published release.
+a framework-independent TypeScript client. Verification status is recorded
+in [verification](docs/verification.md); this is not a published release.
 
 ## Packages
 
@@ -29,7 +29,6 @@ Cargo and pnpm manage their respective workspaces. No extra monorepo build syste
 ## Contract and versions
 
 The approved v1 design is documented in [IPC contract v1](docs/ipc-v1.md).
-Implementation and verification are tracked in [IPC v1 tasks](odd/tasks/ipc-v1.md).
 Detailed verification progress, typed integrity errors and cancellation/interruption
 are deferred to v2, after the base library's public API supports them.
 
