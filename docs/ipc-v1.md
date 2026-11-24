@@ -7,7 +7,10 @@ closing a screen does not cancel an accepted operation.
 ## Trust boundary
 
 The Rust host supplies its `hostmylauncher::Client`, allowed launcher catalog,
-and per-instance registrations (launcher ID, destination, manifest path).
+and an instance locator that answers, on every start, where the host's installation
+of `(launcherId, instanceId)` lives (destination, manifest path), or that it is not
+installed (`not_found`) or in use by the host (`operation_conflict`). The bridge
+stores no catalog of installations.
 No IPC command accepts a destination, manifest path, arbitrary remote file URL,
 base API URL, or bearer token. The bridge fetches provider files itself for operations.
 Catalog queries must remain inside the host-configured catalog.
@@ -36,7 +39,7 @@ must be documented with the implementation; generated files are not hand-edited.
 
 Query results are explicit projections, never serialization of base models with
 flattened unknown fields. InstanceDto includes public ID/catalog/title/version/
-loader/Java/RAM/artwork/locked/download metadata, but no embedded files, users,
+loader/Java/RAM/artwork/locked/noPremium/download metadata, but no embedded files, user whitelist,
 access code or arbitrary extra fields. File descriptors expose provider relative
 path/name, size and hashes, never download URLs.
 
@@ -67,13 +70,15 @@ Event delivery is best effort: query get_operation to recover authoritative stat
 Consumers ignore duplicate/older sequences. Register the listener before querying
 state to avoid a query/subscription gap. Callbacks never revive terminal operations.
 
-Registrations and starts are scoped by the `(launcherId, instanceId)` pair; the same
+Locations and starts are scoped by the `(launcherId, instanceId)` pair; the same
 remote instance ID may identify separate host-managed installations under different
 providers. `get_operation` remains keyed by globally unique operationId. Admission
 guards operate on filesystem identity, not merely provider-scoped identity. Existing
 canonical aliases, ancestor/descendant roots and conflicting manifest resources
 must not permit overlapping in-process operations. This cannot prevent another
 process from modifying the installation; the launcher must ensure exclusive use.
+Host-side `is_busy(launcherId, instanceId)` and `has_active_operations()` expose
+unfinished operations so the launcher can keep launch, uninstall and exit away.
 
 ## Progress
 

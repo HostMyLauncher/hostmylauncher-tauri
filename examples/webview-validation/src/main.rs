@@ -1,4 +1,4 @@
-use hostmylauncher_tauri::{Bridge, InstanceRegistration};
+use hostmylauncher_tauri::{Bridge, InstanceLocation, LocateError};
 use serde_json::json;
 use std::{
     path::PathBuf,
@@ -69,12 +69,21 @@ async fn main() {
     let bridge = Bridge::new(
         hostmylauncher::Client::with_base_url(&provider.uri()).expect("local mock provider"),
         vec!["proof".into()],
-        vec![InstanceRegistration {
-            instance_id: "proof-instance".into(),
-            launcher_id: "proof".into(),
-            destination: temporary.path().join("installation"),
-            manifest_path: temporary.path().join("manifest.json"),
-        }],
+        {
+            let destination = temporary.path().join("installation");
+            let manifest_path = temporary.path().join("manifest.json");
+            // The host answers from its own catalog; this example has one installation.
+            move |launcher: &str, instance: &str| {
+                if (launcher, instance) == ("proof", "proof-instance") {
+                    Ok(InstanceLocation {
+                        destination: destination.clone(),
+                        manifest_path: manifest_path.clone(),
+                    })
+                } else {
+                    Err(LocateError::NotInstalled)
+                }
+            }
+        },
         Arc::new(|_| {}),
     )
     .expect("bridge configuration");

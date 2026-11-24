@@ -1,7 +1,9 @@
-//! Stage-one RED: Bridge and InstanceRegistration deliberately do not exist yet.
+//! Public service behavior against a mock provider and a fixed test host.
 //! All assertions use the intended public service, never its internal storage.
 use hostmylauncher::Client;
-use hostmylauncher_tauri::{contract::*, Bridge, InstanceRegistration};
+mod common;
+use common::{located, InstanceRegistration};
+use hostmylauncher_tauri::{contract::*, Bridge, InstanceLocation, LocateError};
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
@@ -45,7 +47,7 @@ fn bridge_with_catalog(
             .unwrap()
             .with_token("PRIVATE_BEARER"),
         catalog,
-        registrations,
+        located(registrations),
         Arc::new(move |snapshot| events.lock().unwrap().push(snapshot)),
     )
     .unwrap()
@@ -415,6 +417,62 @@ async fn queued_correlation_terminal_recovery_and_real_base_semantics() {
 }
 
 #[tokio::test]
+async fn host_locator_decides_admission_and_sees_busy_operations() {
+    let server = MockServer::start().await;
+    provider(&server, true).await;
+    let temp = TempDir::new().unwrap();
+    let location = InstanceLocation {
+        destination: temp.path().join("root"),
+        manifest_path: temp.path().join("manifest.json"),
+    };
+    // Host catalog: None = not installed, Some(in_use) = installed.
+    let host: Arc<Mutex<Option<bool>>> = Arc::default();
+    let seen = host.clone();
+    let bridge = Bridge::new(
+        Client::with_base_url(&server.uri()).unwrap(),
+        vec!["catalog".into()],
+        move |_: &str, instance: &str| match (instance, *seen.lock().unwrap()) {
+            ("one", Some(false)) => Ok(location.clone()),
+            ("one", Some(true)) => Err(LocateError::Busy),
+            _ => Err(LocateError::NotInstalled),
+        },
+        Arc::new(|_| {}),
+    )
+    .unwrap();
+
+    for (state, code) in [
+        (None, ErrorCode::NotFound),
+        (Some(true), ErrorCode::OperationConflict),
+    ] {
+        *host.lock().unwrap() = state;
+        let rejected = bridge
+            .start_operation(request("one", OperationKind::Sync))
+            .await
+            .unwrap_err();
+        assert_eq!(rejected.code, code);
+        assert!(rejected.operation_id.is_none());
+        assert!(!bridge.is_busy("catalog", "one") && !bridge.has_active_operations());
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+    assert!(!temp.path().join("root").exists());
+
+    // Installed after the bridge was created: no registration step needed.
+    *host.lock().unwrap() = Some(false);
+    let accepted = bridge
+        .start_operation(request("one", OperationKind::Sync))
+        .await
+        .unwrap();
+    assert!(bridge.is_busy("catalog", "one"));
+    assert!(!bridge.is_busy("catalog", "two") && !bridge.is_busy("other", "one"));
+    assert!(bridge.has_active_operations());
+    assert_eq!(
+        terminal(&bridge, &accepted).await.status,
+        OperationStatus::Succeeded
+    );
+    assert!(!bridge.is_busy("catalog", "one") && !bridge.has_active_operations());
+}
+
+#[tokio::test]
 async fn unregistered_and_outside_catalog_admission_has_no_side_effects() {
     let server = MockServer::start().await;
     let temp = TempDir::new().unwrap();
@@ -603,7 +661,7 @@ async fn canonical_symlink_alias_with_missing_descendants_cannot_evade_guard() {
 async fn safe_query_projections_and_safe_variant_errors() {
     let server = MockServer::start().await;
     let instance = json!({"id":"one", "launcher_id":"catalog", "title":"Pack", "downloads":2,
-        "code":"PRIVATE_CODE", "secret":"PRIVATE_EXTRA", "users":{"whitelist":["PRIVATE_EXTRA"]},
+        "code":"PRIVATE_CODE", "secret":"PRIVATE_EXTRA", "users":{"whitelist":["PRIVATE_EXTRA"],"noPremium":true},
         "files":[{"downloads":["http://PRIVATE_URL"]}]});
     Mock::given(method("GET"))
         .and(path("/launchers/catalog/instances"))
@@ -635,6 +693,7 @@ async fn safe_query_projections_and_safe_variant_errors() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].title.as_deref(), Some("Pack"));
     assert_eq!(listed[0].downloads, 2);
+    assert!(listed[0].no_premium);
     safe(&listed);
     let fetched = bridge
         .get_instance(GetInstanceRequest {
@@ -776,11 +835,11 @@ async fn task_callback_panic_becomes_failure_and_does_not_strand_guard() {
     let bridge = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![registration(
+        located(vec![registration(
             "one",
             temp.path().join("root"),
             temp.path().join("manifest.json"),
-        )],
+        )]),
         Arc::new(move |snapshot: OperationSnapshot| {
             if snapshot.status == OperationStatus::Running
                 && !once.swap(true, std::sync::atomic::Ordering::SeqCst)

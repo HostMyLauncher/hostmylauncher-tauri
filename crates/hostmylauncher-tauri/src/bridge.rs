@@ -11,13 +11,45 @@ use std::{
 
 pub type EventSink = Arc<dyn Fn(OperationSnapshot) + Send + Sync + 'static>;
 
-/// Host-owned registration. Never accepted through IPC.
+/// Where a host-managed installation lives. Never accepted through IPC.
 #[derive(Clone, Debug)]
-pub struct InstanceRegistration {
-    pub instance_id: String,
-    pub launcher_id: String,
+pub struct InstanceLocation {
     pub destination: PathBuf,
     pub manifest_path: PathBuf,
+}
+
+/// Why the host refuses to locate an installation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocateError {
+    /// The host has no installation for this provider instance (`not_found`).
+    NotInstalled,
+    /// The host is using the installation, e.g. the game is running (`operation_conflict`).
+    Busy,
+}
+
+/// The host's answer to "where is this installation?". The launcher keeps its
+/// own catalog of installations; the bridge stores none and asks on every start.
+///
+/// `locate` runs while the bridge holds its admission lock, so it must not call
+/// back into the [`Bridge`]. A host that reserves an installation for its own
+/// work (launching, uninstalling) should record the reservation where `locate`
+/// sees it, release its own locks, and only then check [`Bridge::is_busy`]:
+/// either the bridge sees the reservation or the host sees the operation.
+pub trait InstanceLocator: Send + Sync + 'static {
+    fn locate(&self, launcher_id: &str, instance_id: &str)
+        -> Result<InstanceLocation, LocateError>;
+}
+impl<F> InstanceLocator for F
+where
+    F: Fn(&str, &str) -> Result<InstanceLocation, LocateError> + Send + Sync + 'static,
+{
+    fn locate(
+        &self,
+        launcher_id: &str,
+        instance_id: &str,
+    ) -> Result<InstanceLocation, LocateError> {
+        self(launcher_id, instance_id)
+    }
 }
 
 #[derive(Clone)]
@@ -25,7 +57,7 @@ pub struct Bridge(Arc<Inner>);
 struct Inner {
     client: Client,
     catalog: BTreeSet<String>,
-    registrations: BTreeMap<(String, String), InstanceRegistration>,
+    locator: Box<dyn InstanceLocator>,
     state: Mutex<State>,
     sinks: Mutex<Vec<EventSink>>,
 }
@@ -33,7 +65,12 @@ struct Inner {
 struct State {
     next_id: u64,
     operations: BTreeMap<String, OperationSnapshot>,
-    active: BTreeMap<String, Resources>,
+    active: BTreeMap<String, Active>,
+}
+struct Active {
+    launcher_id: String,
+    instance_id: String,
+    resources: Resources,
 }
 #[derive(Clone)]
 struct Resources {
@@ -129,9 +166,9 @@ fn identity(path: &Path, manifest: bool) -> Result<PathBuf, BridgeError> {
     }
     Ok(result)
 }
-fn resources(registration: &InstanceRegistration) -> Result<Resources, BridgeError> {
-    let root = identity(&registration.destination, false)?;
-    let manifest = identity(&registration.manifest_path, true)?;
+fn resources(location: &InstanceLocation) -> Result<Resources, BridgeError> {
+    let root = identity(&location.destination, false)?;
+    let manifest = identity(&location.manifest_path, true)?;
     // A manifest may live inside its own destination, but cannot be the root
     // itself or an ancestor that would need to be both a file and a directory.
     if root.starts_with(&manifest) {
@@ -144,41 +181,45 @@ impl Bridge {
     pub fn new(
         client: Client,
         catalog: Vec<String>,
-        registrations: Vec<InstanceRegistration>,
+        locator: impl InstanceLocator,
         sink: EventSink,
     ) -> Result<Self, BridgeError> {
         if catalog.is_empty() || catalog.iter().any(|id| !identifier(id)) {
             return Err(error(ErrorCode::InvalidRequest));
         }
-        let catalog: BTreeSet<_> = catalog.into_iter().collect();
-        let mut registered = BTreeMap::new();
-        for registration in registrations {
-            if !identifier(&registration.instance_id)
-                || !catalog.contains(&registration.launcher_id)
-            {
-                return Err(error(ErrorCode::InvalidRequest));
-            }
-            resources(&registration)?;
-            if registered
-                .insert(
-                    (
-                        registration.launcher_id.clone(),
-                        registration.instance_id.clone(),
-                    ),
-                    registration,
-                )
-                .is_some()
-            {
-                return Err(error(ErrorCode::InvalidRequest));
-            }
-        }
         Ok(Self(Arc::new(Inner {
             client,
-            catalog,
-            registrations: registered,
+            catalog: catalog.into_iter().collect(),
+            locator: Box::new(locator),
             state: Mutex::new(State::default()),
             sinks: Mutex::new(vec![sink]),
         })))
+    }
+
+    /// Whether an accepted operation on this provider instance has not finished.
+    /// Hosts check it before launching, uninstalling or exiting.
+    pub fn is_busy(&self, launcher_id: &str, instance_id: &str) -> bool {
+        lock(&self.0.state)
+            .active
+            .values()
+            .any(|active| active.launcher_id == launcher_id && active.instance_id == instance_id)
+    }
+
+    /// Whether any accepted operation has not finished.
+    pub fn has_active_operations(&self) -> bool {
+        !lock(&self.0.state).active.is_empty()
+    }
+
+    fn locate(&self, launcher_id: &str, instance_id: &str) -> Result<Resources, BridgeError> {
+        let located = catch_unwind(AssertUnwindSafe(|| {
+            self.0.locator.locate(launcher_id, instance_id)
+        }))
+        .map_err(|_| error(ErrorCode::Internal))?;
+        match located {
+            Ok(location) => resources(&location),
+            Err(LocateError::NotInstalled) => Err(error(ErrorCode::NotFound)),
+            Err(LocateError::Busy) => Err(error(ErrorCode::OperationConflict)),
+        }
     }
 
     /// Attach a host event emitter; called once by plugin setup. Like the initial
@@ -246,6 +287,7 @@ impl Bridge {
             poster: instance.poster,
             animation: instance.animation,
             locked: instance.locked,
+            no_premium: instance.users.is_some_and(|users| users.no_premium),
             downloads: instance.downloads,
         })
     }
@@ -360,22 +402,17 @@ impl Bridge {
         if !identifier(&request.instance_id) || !code_valid(request.code.as_deref()) {
             return Err(error(ErrorCode::InvalidRequest));
         }
-        let registration = self
-            .0
-            .registrations
-            .get(&(request.launcher_id.clone(), request.instance_id.clone()))
-            .ok_or_else(|| error(ErrorCode::NotFound))?
-            .clone();
         let runtime =
             tokio::runtime::Handle::try_current().map_err(|_| error(ErrorCode::Internal))?;
         let (accepted, resources) = {
             let mut state = lock(&self.0.state);
-            // Re-resolve on every admission: paths may have changed since construction.
-            let resources = resources(&registration)?;
+            // Ask the host under the admission lock, so a host reservation and an
+            // accepted operation cannot both miss each other (see InstanceLocator).
+            let resources = self.locate(&request.launcher_id, &request.instance_id)?;
             if state
                 .active
                 .values()
-                .any(|active| resources.conflicts(active))
+                .any(|active| resources.conflicts(&active.resources))
             {
                 return Err(error(ErrorCode::OperationConflict));
             }
@@ -396,7 +433,14 @@ impl Bridge {
                 error: None,
             };
             state.next_id = next;
-            state.active.insert(id.clone(), resources.clone());
+            state.active.insert(
+                id.clone(),
+                Active {
+                    launcher_id: request.launcher_id.clone(),
+                    instance_id: request.instance_id.clone(),
+                    resources: resources.clone(),
+                },
+            );
             state.operations.insert(id, accepted.clone());
             (accepted, resources)
         };
@@ -413,9 +457,7 @@ impl Bridge {
                     Some(indeterminate(ProgressStage::FetchingFiles)),
                 )?;
                 queued_emit?;
-                bridge
-                    .execute(&id, &registration, &resources, request)
-                    .await
+                bridge.execute(&id, &resources, request).await
             })
             .catch_unwind()
             .await;
@@ -487,7 +529,6 @@ impl Bridge {
     async fn execute(
         &self,
         id: &str,
-        registration: &InstanceRegistration,
         resources: &Resources,
         request: StartOperationRequest,
     ) -> Result<OperationResult, BridgeError> {
@@ -495,8 +536,8 @@ impl Bridge {
             .0
             .client
             .get_instance_files(
-                &registration.launcher_id,
-                &registration.instance_id,
+                &request.launcher_id,
+                &request.instance_id,
                 request.code.as_deref(),
             )
             .await

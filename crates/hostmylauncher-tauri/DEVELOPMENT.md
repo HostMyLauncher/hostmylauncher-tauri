@@ -6,23 +6,31 @@ derives; generated TypeScript is not a handwritten copy.
 
 ## Service and host wiring
 
-`Bridge::new(client, catalog, registrations, sink)` creates a cloneable session
+`Bridge::new(client, catalog, locator, sink)` creates a cloneable session
 service. Its six async methods accept the generated request DTOs. The host supplies
-its `hostmylauncher::Client`, allowed launcher IDs, and `InstanceRegistration`
-values (instance ID, launcher ID, destination, manifest path). IPC never configures
+its `hostmylauncher::Client`, allowed launcher IDs, and an `InstanceLocator`: any
+`Fn(&str, &str) -> Result<InstanceLocation, LocateError>` that answers from the
+launcher's own catalog of installations. `LocateError::NotInstalled` rejects a start
+with `not_found`, `LocateError::Busy` with `operation_conflict`. IPC never configures
 these resources or the bearer token. Keep the service alive for the backend session;
 UI cleanup never cancels accepted work. Event sinks receive complete snapshots
 outside service locks; their panics are caught. Querying state remains authoritative
 when event delivery fails.
 
-Registrations use absolute host paths without parent traversal components. IDs are
+Located paths must be absolute host paths without parent traversal components. IDs are
 nonempty ASCII alphanumeric/dot/underscore/hyphen, excluding `.` and `..`; access
 codes cannot be blank. Existing directory aliases are canonicalized to their actual
 roots, including aliases in ancestors of missing paths. Manifest symlinks are
-rejected. Admission re-resolves resources and checks overlapping roots, manifests,
+rejected. Admission locates and resolves resources on every start and checks overlapping roots, manifests,
 and root/manifest intersections before allocating an operation ID, issuing HTTP,
 or modifying files. This does not protect against another process changing paths
 or installations while work is active.
+
+The locator runs under the admission lock, so it must not call into the bridge.
+To keep its own work off an installation, a host records a reservation where the
+locator sees it (the locator then answers `Busy`), releases its own locks, and then
+checks `Bridge::is_busy(launcher, instance)`. One of the two always sees the other.
+`has_active_operations()` covers exit protection.
 
 The default Cargo feature set has no Tauri dependency. Enable `plugin` for a real
 Tauri 2 plugin; Tauri default features remain disabled and the application supplies
@@ -30,17 +38,22 @@ its own runtime. Exact Rust wiring:
 
 ```rust,ignore
 use std::sync::Arc;
-use hostmylauncher_tauri::{Bridge, InstanceRegistration};
+use hostmylauncher_tauri::{Bridge, InstanceLocation, LocateError};
 
 let service = Bridge::new(
     client,                       // Host-configured hostmylauncher::Client
-    vec![launcher_id.clone()],
-    vec![InstanceRegistration {
-        instance_id,
-        launcher_id,
-        destination,              // Absolute host-owned PathBuf
-        manifest_path,            // Absolute host-owned PathBuf
-    }],
+    vec![launcher_id],            // Launcher IDs the app may query
+    move |launcher: &str, instance: &str| {
+        // Answer from the launcher's own catalog of installations.
+        match installations.lookup(launcher, instance) {
+            Some(found) if found.in_use => Err(LocateError::Busy),
+            Some(found) => Ok(InstanceLocation {
+                destination: found.path.clone(),             // Absolute host-owned PathBuf
+                manifest_path: found.path.join(".hostmylauncher-manifest.json"),
+            }),
+            None => Err(LocateError::NotInstalled),
+        }
+    },
     Arc::new(|snapshot| {
         // Optional host observer; no event subscription required to retain state.
         let _ = snapshot;

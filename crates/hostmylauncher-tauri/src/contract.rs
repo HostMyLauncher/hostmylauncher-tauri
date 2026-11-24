@@ -55,7 +55,7 @@ dto!(InstanceDto {
     minecraft_version: Option<String>, server: Option<String>, loader: Option<LoaderDto>,
     java_version: Option<u32>, suggested_ram: Option<u32>, icon: Option<String>,
     landscape: Option<String>, poster: Option<String>, animation: Option<String>,
-    locked: bool, downloads: u64 => "number"
+    locked: bool, no_premium: bool, downloads: u64 => "number"
 });
 dto!(HashesDto { sha1: Option<String>, sha512: Option<String> });
 dto!(FileDescriptorDto {

@@ -1,9 +1,11 @@
 # Session provider service
 
-`Bridge::new(client, catalog, registrations, sink)` creates a cloneable Rust service
-independent of a Tauri runtime. Host-owned instance registrations supply launcher
-ID, instance ID and absolute destination/manifest paths. No IPC request supplies
-disk paths, remote URLs, client configuration or bearer credentials.
+`Bridge::new(client, catalog, locator, sink)` creates a cloneable Rust service
+independent of a Tauri runtime. The bridge keeps no catalog of installations: on
+every start it asks the host's `InstanceLocator` where the `(launcherId, instanceId)`
+installation lives (absolute destination and manifest paths), or whether it is not
+installed or in use. No IPC request supplies disk paths, remote URLs, client
+configuration or bearer credentials.
 
 The service exposes typed provider queries plus distinct sync, verify and repair
 operations. `start_operation` returns queued acceptance, not completed installation.
@@ -11,10 +13,13 @@ operations. `start_operation` returns queued acceptance, not completed installat
 instance ID, kind, sequence, progress and terminal result/error. State is not persisted
 across process exit. The launcher owns full-installation readiness and Minecraft.
 
-Admission validates registered resources and rejects active overlapping canonical
+Admission validates the located resources and rejects active overlapping canonical
 roots or manifest resources before allocating an ID, issuing HTTP or touching files.
 This is an in-process guard, not a cross-process lock or crash-atomic guarantee.
-Host callbacks execute outside service locks; panics do not strand active guards.
+Event sinks execute outside service locks; panics do not strand active guards.
+The locator runs under the admission lock and must not call back into the bridge.
+`is_busy(launcher, instance)` and `has_active_operations()` let the host keep its
+own work (launch, uninstall, exit) off installations with unfinished operations.
 Terminal snapshots are not revived by late progress callbacks.
 
 Verification differences are successful results. Sync preserves local edits when

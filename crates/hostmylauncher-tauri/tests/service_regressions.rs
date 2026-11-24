@@ -1,7 +1,9 @@
 //! Additional public-interface regressions for callback isolation and admission.
 use futures_util::FutureExt;
 use hostmylauncher::Client;
-use hostmylauncher_tauri::{contract::*, Bridge, InstanceRegistration};
+mod common;
+use common::{located, InstanceRegistration};
+use hostmylauncher_tauri::{contract::*, Bridge};
 use serde_json::json;
 use std::{
     sync::{Arc, Mutex},
@@ -79,7 +81,7 @@ async fn callback_can_query_authoritative_state_without_global_lock_deadlock() {
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![registration(&temp)],
+        located(vec![registration(&temp)]),
         Arc::new(move |snapshot: OperationSnapshot| {
             let service = callback_slot.lock().unwrap().as_ref().unwrap().clone();
             let (send, receive) = std::sync::mpsc::channel();
@@ -136,7 +138,7 @@ async fn actual_byte_counters_reset_between_files_and_install_counts_are_prepara
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![registration(&temp)],
+        located(vec![registration(&temp)]),
         Arc::new(move |snapshot| captured.lock().unwrap().push(snapshot)),
     )
     .unwrap();
@@ -193,7 +195,7 @@ async fn panic_from_base_progress_is_caught_and_releases_guard() {
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![registration(&temp)],
+        located(vec![registration(&temp)]),
         Arc::new(move |snapshot| {
             if snapshot.status == OperationStatus::Running
                 && snapshot
@@ -239,7 +241,7 @@ async fn invalid_request_fields_do_not_consume_operation_ids_or_make_requests() 
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![registration(&temp)],
+        located(vec![registration(&temp)]),
         Arc::new(move |snapshot| captured.lock().unwrap().push(snapshot)),
     )
     .unwrap();
@@ -284,7 +286,7 @@ async fn changed_manifest_symlink_is_rejected_before_state_http_or_files() {
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![registration.clone()],
+        located(vec![registration.clone()]),
         Arc::new(|_| {}),
     )
     .unwrap();

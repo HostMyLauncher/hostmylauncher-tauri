@@ -1,7 +1,9 @@
 #![cfg(feature = "plugin-tests")]
 //! Real Tauri dispatch on MockRuntime, not proof of a live WebView.
 use hostmylauncher::Client;
-use hostmylauncher_tauri::{contract::*, plugin, registry, Bridge, InstanceRegistration};
+mod common;
+use common::{located, InstanceRegistration};
+use hostmylauncher_tauri::{contract::*, plugin, registry, Bridge};
 use serde_json::{json, Value};
 use std::{
     sync::{Arc, Mutex},
@@ -53,7 +55,7 @@ async fn all_six_generated_commands_reach_real_tauri_bindings() {
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![],
+        located(vec![]),
         Arc::new(|_| {}),
     )
     .unwrap();
@@ -124,12 +126,12 @@ async fn command_acceptance_status_and_real_emit_use_the_generated_contract() {
     let service = Bridge::new(
         Client::with_base_url(&server.uri()).unwrap(),
         vec!["catalog".into()],
-        vec![InstanceRegistration {
+        located(vec![InstanceRegistration {
             instance_id: "one".into(),
             launcher_id: "catalog".into(),
             destination: temp.path().join("root"),
             manifest_path: temp.path().join("manifest.json"),
-        }],
+        }]),
         Arc::new(|_| {}),
     )
     .unwrap();
