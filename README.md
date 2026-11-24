@@ -131,10 +131,10 @@ codes or tokens.
 | `verify` | Reports missing or different files; changes nothing. Differences are a successful result. |
 | `repair` | Restores missing or different files, including user edits. Keeps unrelated files. |
 
-hostmylauncher-rs downloads several files at once. Download progress events from
-different files interleave, each describing one file; `install` progress counts
-prepared entries out of the total and is the better overall indicator. Verification
-has no detailed progress. Cancellation is not supported.
+hostmylauncher-rs downloads several files at once. `download` progress counts the
+bytes downloaded across all of the operation's files over their total size (null
+when a file has no declared size); `install` progress counts prepared entries out
+of the total. Verification has no detailed progress. Cancellation is not supported.
 
 The full IPC contract (commands, payloads, progress, results and errors) is in
 [docs/ipc-v1.md](docs/ipc-v1.md).

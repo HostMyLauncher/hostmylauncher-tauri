@@ -14,7 +14,7 @@ plugin = ["dep:tauri"]
 plugin-tests = ["plugin", "tauri/test"]
 
 [dependencies]
-hostmylauncher = { git = "https://github.com/HostMyLauncher/hostmylauncher-rs", rev = "289dd7119738208fe0cd6107520b4ea3baa9720f" }
+hostmylauncher = { git = "https://github.com/HostMyLauncher/hostmylauncher-rs", rev = "95b06db7c4110ee9ff58ada8aef34b69833061fd" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }

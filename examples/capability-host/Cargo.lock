@@ -1120,7 +1120,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "hostmylauncher"
 version = "0.1.0"
-source = "git+https://github.com/HostMyLauncher/hostmylauncher-rs?rev=289dd7119738208fe0cd6107520b4ea3baa9720f#289dd7119738208fe0cd6107520b4ea3baa9720f"
+source = "git+https://github.com/HostMyLauncher/hostmylauncher-rs?rev=95b06db7c4110ee9ff58ada8aef34b69833061fd#95b06db7c4110ee9ff58ada8aef34b69833061fd"
 dependencies = [
  "futures",
  "hex",

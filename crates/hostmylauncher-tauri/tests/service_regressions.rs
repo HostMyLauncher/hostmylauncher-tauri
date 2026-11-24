@@ -129,7 +129,7 @@ async fn callback_can_query_authoritative_state_without_global_lock_deadlock() {
 }
 
 #[tokio::test]
-async fn actual_byte_counters_reset_between_files_and_install_counts_are_preparation() {
+async fn download_bytes_cover_the_operation_and_install_counts_are_preparation() {
     let server = MockServer::start().await;
     two_files(&server).await;
     let temp = tempfile::TempDir::new().unwrap();
@@ -161,16 +161,13 @@ async fn actual_byte_counters_reset_between_files_and_install_counts_are_prepara
         .filter_map(|s| s.progress.as_ref())
         .filter(|p| p.stage == ProgressStage::Download)
         .collect();
+    // Bytes cover both files (8 + 4), so the bar never restarts per file.
     assert!(download.iter().all(|p| p.unit == Some(ProgressUnit::Bytes)));
+    assert!(download.iter().all(|p| p.total == Some(12)));
     assert!(download
         .windows(2)
-        .any(|p| p[0].current.unwrap() > p[1].current.unwrap()));
-    assert!(download
-        .iter()
-        .any(|p| p.current == Some(8) && p.total == Some(8)));
-    assert!(download
-        .iter()
-        .any(|p| p.current == Some(4) && p.total == Some(4)));
+        .all(|p| p[0].current.unwrap() <= p[1].current.unwrap()));
+    assert_eq!(download.last().unwrap().current, Some(12));
     let install: Vec<_> = events
         .iter()
         .filter(|s| s.status == OperationStatus::Running)

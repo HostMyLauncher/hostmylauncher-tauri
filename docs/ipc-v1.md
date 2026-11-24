@@ -82,9 +82,10 @@ unfinished operations so the launcher can keep launch, uninstall and exit away.
 ## Progress
 
 Progress contains stage and nullable current, total, unit. Units distinguish
-`bytes`, `entries` and `archives`; zero/unknown byte totals become null. No overall
-percentage is promised. Download callbacks describe one file/attempt and can reset
-on retries; they occur before final integrity validation. Install counts describe
+`bytes`, `entries` and `archives`; zero/unknown byte totals become null. Download
+progress is the bytes downloaded across every file the operation downloads, over
+their total declared size; it can go back when a file is retried, and it occurs
+before final integrity validation. Install counts describe
 preparation of regular entries, not committed replacements. Extract describes one
 staged archive. Remove is declared upstream but not currently emitted. Repair
 provides only download callbacks; verification has no progress callback. Fetching
