@@ -7,7 +7,13 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     path::{Component, Path, PathBuf},
     sync::{Arc, Mutex, Weak},
+    time::{Duration, Instant},
 };
+
+/// Progress snapshots go out at most this often per operation and stage. Hosts
+/// run every event on their UI thread (a WebView); per-file progress would
+/// flood it. Status changes and completed stages always go out right away.
+const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 
 pub type EventSink = Arc<dyn Fn(OperationSnapshot) + Send + Sync + 'static>;
 pub type CatalogSink = Arc<dyn Fn(CatalogSnapshot) + Send + Sync + 'static>;
@@ -76,6 +82,8 @@ struct State {
     next_id: u64,
     operations: BTreeMap<String, OperationSnapshot>,
     active: BTreeMap<String, Active>,
+    /// When each operation last emitted progress, per stage (see PROGRESS_EVERY).
+    last_progress: BTreeMap<String, Vec<(ProgressStage, Instant)>>,
 }
 struct Active {
     launcher_id: String,
@@ -139,14 +147,14 @@ fn identity(path: &Path, manifest: bool) -> Result<PathBuf, BridgeError> {
             }
             if !manifest
                 && !std::fs::metadata(path)
-                    .map_err(|_| error(ErrorCode::Filesystem))?
+                    .map_err(|e| fs_error(path, e))?
                     .is_dir()
             {
                 return Err(error(ErrorCode::InvalidRequest));
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => return Err(error(ErrorCode::Filesystem)),
+        Err(e) => return Err(fs_error(path, e)),
     }
     let mut ancestor = path.to_path_buf();
     let mut missing = Vec::new();
@@ -164,10 +172,10 @@ fn identity(path: &Path, manifest: bool) -> Result<PathBuf, BridgeError> {
                     return Err(error(ErrorCode::InvalidRequest));
                 }
             }
-            Err(_) => return Err(error(ErrorCode::Filesystem)),
+            Err(e) => return Err(fs_error(&ancestor, e)),
         }
     }
-    let mut result = std::fs::canonicalize(&ancestor).map_err(|_| error(ErrorCode::Filesystem))?;
+    let mut result = std::fs::canonicalize(&ancestor).map_err(|e| fs_error(&ancestor, e))?;
     if !missing.is_empty() && !result.is_dir() {
         return Err(error(ErrorCode::InvalidRequest));
     }
@@ -550,7 +558,15 @@ impl Bridge {
             })
             .catch_unwind()
             .await;
-            let outcome = outcome.unwrap_or_else(|_| Err(error(ErrorCode::Internal)));
+            let outcome = outcome.unwrap_or_else(|panic| {
+                let message = panic
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| panic.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "no message".into());
+                log::error!("operation {id} panicked: {message}");
+                Err(error(ErrorCode::Internal))
+            });
             bridge.finish(&id, outcome);
         });
         Ok(accepted)
@@ -572,12 +588,19 @@ impl Bridge {
             ) {
                 return Ok(());
             }
+            let status_changed = status.is_some_and(|status| status != snapshot.status);
             if let Some(status) = status {
                 snapshot.status = status;
             }
             snapshot.progress = progress;
             snapshot.sequence += 1;
-            snapshot.clone()
+            let snapshot = snapshot.clone();
+            // Skipped snapshots aren't lost: the next one carries the newest
+            // counts (they are cumulative) under a higher sequence.
+            if !status_changed && !progress_due(&mut state.last_progress, id, &snapshot) {
+                return Ok(());
+            }
+            snapshot
         };
         self.emit(snapshot)
     }
@@ -601,6 +624,11 @@ impl Bridge {
                     snapshot.error = None;
                 }
                 Err(mut error) => {
+                    log::error!(
+                        "operation {id} ({:?}) failed: {:?}",
+                        snapshot.kind,
+                        error.code
+                    );
                     error.operation_id = Some(id.to_owned());
                     error.stage = snapshot.progress.as_ref().map(|progress| progress.stage);
                     snapshot.status = OperationStatus::Failed;
@@ -610,6 +638,7 @@ impl Bridge {
             }
             let snapshot = snapshot.clone();
             state.active.remove(id);
+            state.last_progress.remove(id);
             snapshot
         };
         // Terminal emission is best-effort and cannot revive or change the outcome.
@@ -687,6 +716,37 @@ impl Bridge {
         }
     }
 }
+/// Whether a progress snapshot should be emitted now (see PROGRESS_EVERY).
+fn progress_due(
+    last: &mut BTreeMap<String, Vec<(ProgressStage, Instant)>>,
+    id: &str,
+    snapshot: &OperationSnapshot,
+) -> bool {
+    let Some(progress) = &snapshot.progress else {
+        return true;
+    };
+    let complete = matches!(
+        (progress.current, progress.total),
+        (Some(current), Some(total)) if current >= total
+    );
+    let now = Instant::now();
+    let stages = last.entry(id.to_owned()).or_default();
+    match stages
+        .iter_mut()
+        .find(|(stage, _)| *stage == progress.stage)
+    {
+        Some((_, at)) if !complete && now.duration_since(*at) < PROGRESS_EVERY => false,
+        Some((_, at)) => {
+            *at = now;
+            true
+        }
+        None => {
+            stages.push((progress.stage, now));
+            true
+        }
+    }
+}
+
 fn indeterminate(stage: ProgressStage) -> OperationProgress {
     OperationProgress {
         stage,
@@ -725,8 +785,17 @@ fn verification_dto(report: hostmylauncher::VerificationReport) -> VerificationR
             .collect(),
     }
 }
+/// A filesystem failure, logged with its path (hosts only get the code).
+fn fs_error(path: &Path, source: std::io::Error) -> BridgeError {
+    log::error!("filesystem error at {}: {source}", path.display());
+    error(ErrorCode::Filesystem)
+}
+
+/// Hosts only see the coarse code, so the full error (file, URL, reason) is
+/// logged here through the `log` facade for the host's session log.
 fn map_error(source: hostmylauncher::Error) -> BridgeError {
     use hostmylauncher::Error;
+    log::error!("provider error: {source}");
     match source {
         Error::NotFound => error(ErrorCode::NotFound),
         Error::Unauthorized => error(ErrorCode::Unauthorized),
@@ -740,5 +809,56 @@ fn map_error(source: hostmylauncher::Error) -> BridgeError {
         Error::Io(_) => error(ErrorCode::Filesystem),
         Error::Decode(_) => error(ErrorCode::Decode),
         Error::Url(_) | Error::Other(_) => error(ErrorCode::Internal),
+    }
+}
+
+#[cfg(test)]
+mod progress_throttle {
+    use super::*;
+
+    fn snapshot(stage: ProgressStage, current: u64, total: u64) -> OperationSnapshot {
+        OperationSnapshot {
+            operation_id: "op".into(),
+            launcher_id: "launcher".into(),
+            instance_id: "instance".into(),
+            kind: OperationKind::Sync,
+            status: OperationStatus::Running,
+            sequence: 0,
+            progress: Some(OperationProgress {
+                stage,
+                current: Some(current),
+                total: Some(total),
+                unit: Some(ProgressUnit::Bytes),
+            }),
+            result: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn skips_bursts_but_never_a_finished_stage_or_a_new_one() {
+        let mut last = BTreeMap::new();
+        let download = |current| snapshot(ProgressStage::Download, current, 100);
+        assert!(
+            progress_due(&mut last, "op", &download(1)),
+            "first one goes out"
+        );
+        assert!(
+            !progress_due(&mut last, "op", &download(2)),
+            "burst is skipped"
+        );
+        assert!(
+            progress_due(&mut last, "op", &snapshot(ProgressStage::Install, 1, 10)),
+            "another stage has its own window"
+        );
+        assert!(
+            progress_due(&mut last, "op", &download(100)),
+            "a finished stage always goes out"
+        );
+        std::thread::sleep(PROGRESS_EVERY);
+        assert!(
+            progress_due(&mut last, "op", &download(100)),
+            "after the window, again"
+        );
     }
 }
